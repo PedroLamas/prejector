@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema id="NewDataSet" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+  <xs:element name="InjectionSpecification">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Namespace" type="xs:string" minOccurs="0" />
+        <xs:element name="Namespaces" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Namespace" nillable="false" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:simpleContent msdata:ColumnName="Namepace_Text" msdata:Ordinal="1">
+                    <xs:extension base="xs:string">
+                      <xs:attribute name="DebugOnly" type="xs:boolean" />
+                      <xs:attribute name="Condition" type="xs:string" />
+					</xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="FolderExcludes" minOccurs="1" maxOccurs="1">
+	  <xs:complexType>
+	    <xs:sequence>
+	      <xs:element name="FolderExclude" nillable="false" minOccurs="0" maxOccurs="unbounded">
+		<xs:complexType>
+		  <xs:simpleContent msdata:ColumnName="FolderExclude_Text" msdata:Ordinal="1">
+		    <xs:extension base="xs:string">		      
+                      <xs:attribute name="Condition" type="xs:string" />
+		    </xs:extension>
+		  </xs:simpleContent>
+		</xs:complexType>
+	      </xs:element>
+	    </xs:sequence>
+	  </xs:complexType>
+        </xs:element>
+        <xs:element name="Exclude" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="BaseType" nillable="true" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:simpleContent msdata:ColumnName="BaseType_Text">
+                    <xs:extension base="xs:string">
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Injections" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Injection" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Provider" type="xs:string" minOccurs="0" msdata:Ordinal="0" />
+                    <xs:element nillable="false"  name="Concrete" type="xs:string" minOccurs="0" msdata:Ordinal="1" />
+                    <xs:element name="ConstructorArgument" nillable="true" minOccurs="0" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:simpleContent msdata:ColumnName="ConstructorArgument_Text" msdata:Ordinal="1">
+                          <xs:extension base="xs:string">
+                            <xs:attribute name="name" type="xs:string" />
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="Interface" nillable="true" minOccurs="0" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:simpleContent msdata:ColumnName="Interface_Text" msdata:Ordinal="0">
+                          <xs:extension base="xs:string">
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute name="Singleton" type="xs:boolean" />
+                  <xs:attribute name="NoScan" type="xs:boolean" />
+                  <xs:attribute name="Condition" type="xs:string" />
+                  <xs:attribute name="DebugOnly" type="xs:boolean" />
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="NewDataSet" msdata:IsDataSet="true" msdata:UseCurrentLocale="true">
+    <xs:complexType>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element ref="InjectionSpecification" />
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

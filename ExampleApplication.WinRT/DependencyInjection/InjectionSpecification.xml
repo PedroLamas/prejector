@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<InjectionSpecification>
+
+  <!-- Namespace for the kernel classes -->
+  <Namespace>ExampleApplication.WinRT.DependencyInjection</Namespace>
+
+  <!-- The injections -->
+  <Injections>
+    <Injection Singleton="true">
+      <Provider>ApplicationStateProvider</Provider>
+      <Concrete>ApplicationState</Concrete>
+      <Interface>IApplicationState</Interface>
+    </Injection>
+    <Injection Singleton="true">
+      <Concrete>DataService</Concrete>
+      <Interface>IDataService</Interface>
+    </Injection>
+    <Injection Singleton="true">
+      <Concrete>SharingModel</Concrete>
+      <Interface>ISharing</Interface>
+    </Injection>
+    <Injection Singleton="true">
+      <Concrete>MainViewModel</Concrete>
+    </Injection>
+  </Injections>
+</InjectionSpecification>

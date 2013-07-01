@@ -1,4 +1,11 @@
-﻿using System;
+// -----------------------------------------------------------------------
+// <copyright file="ParseException.cs" company="Nokia">
+// Copyright (c) 2013, Nokia
+// All rights reserved.
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
 
 namespace PreJector
 {

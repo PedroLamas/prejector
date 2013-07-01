@@ -1,4 +1,11 @@
-﻿using System.Collections.Generic;
+// -----------------------------------------------------------------------
+// <copyright file="EmittedKernelSpec.cs" company="Nokia">
+// Copyright (c) 2013, Nokia
+// All rights reserved.
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System.Collections.Generic;
 
 namespace PreJector
 {

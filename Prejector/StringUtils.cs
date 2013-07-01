@@ -1,4 +1,11 @@
-﻿namespace PreJector
+// -----------------------------------------------------------------------
+// <copyright file="StringUtils.cs" company="Nokia">
+// Copyright (c) 2013, Nokia
+// All rights reserved.
+// </copyright>
+// -----------------------------------------------------------------------
+
+namespace PreJector
 {
     public static class StringUtils
     {

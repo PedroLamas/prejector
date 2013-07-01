@@ -1,4 +1,11 @@
-﻿using System;
+// -----------------------------------------------------------------------
+// <copyright file="CSharpFile.cs" company="Nokia">
+// Copyright (c) 2013, Nokia
+// All rights reserved.
+// </copyright>
+// -----------------------------------------------------------------------
+
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;

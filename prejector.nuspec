@@ -2,10 +2,14 @@
 <package xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <metadata xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
     <id>PreJector</id>
-    <version>1.0.0.0</version>
+    <version>1.0.0.1</version>
     <authors>Nokia Entertainment</authors>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>https://github.com/nokia-entertainment/prejector</description>
+    <description>
+    A static dependency injection framework for .Net.
+    See https://github.com/nokia-entertainment/prejector
+    for more information.
+    </description>
   </metadata>
   <files>
   

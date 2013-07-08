@@ -622,7 +622,7 @@ namespace PreJector
                 rw.WriteLine("#if DEBUG");
             }
 
-            rw.WriteLine("static {0}() {{ Debug.WriteLine(\"Kernel TypeLoad: {0}\"); }}", injection.ConcreteClassName);
+            rw.WriteLine("static {0}() {{ Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \"), MillisecondsElapsed : \" + (DateTime.UtcNow.Ticks / 10000) + \" : Kernel TypeLoad: {0}\"); }}", injection.ConcreteClassName);
 
             if (!debugIfDefsAlreadyEmitted)
             {

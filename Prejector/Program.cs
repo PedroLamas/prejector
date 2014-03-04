@@ -452,8 +452,6 @@ namespace PreJector
             rw.WriteLine("[CoverageExclude]");
             rw.WriteLine("{0} static class {1} {{", _renderAccessModifier, outerKernelClassName);
 
-            RenderStaticConstructorDebugLog(injection, debugEmit, rw);
-
             if (!string.IsNullOrEmpty(injection.Provider))
             {
                 if (string.IsNullOrEmpty(injection.Concrete))
@@ -612,22 +610,6 @@ namespace PreJector
                          _renderAccessModifier,
                          spec.PrivateFieldType,
                          spec.PrivateFieldName);
-        }
-
-        private static void RenderStaticConstructorDebugLog(InjectionSpecificationInjection injection,
-                                                            bool debugIfDefsAlreadyEmitted, StringWriter rw)
-        {
-            if (!debugIfDefsAlreadyEmitted)
-            {
-                rw.WriteLine("#if DEBUG");
-            }
-
-            rw.WriteLine("static {0}() {{ Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \"), MillisecondsElapsed : \" + (DateTime.UtcNow.Ticks / 10000) + \" : Kernel TypeLoad: {0}\"); }}", injection.ConcreteClassName);
-
-            if (!debugIfDefsAlreadyEmitted)
-            {
-                rw.WriteLine("#endif");
-            }
         }
 
         private static string RenderPrivateField(StringWriter rw, EmittedKernelSpec spec)

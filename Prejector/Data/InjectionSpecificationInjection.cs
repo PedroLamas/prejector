@@ -55,12 +55,12 @@ public partial class InjectionSpecificationInjection
             throw new Exception("Why does it not exist?");
         }
 
-        return "Kernel_" + @interface.InterfaceNameNoI + ".Get()";
+        return "Kernel_" + @interface.InterfaceNameNoI + ".Get(depth + 1)";
     }
 
     public string ConcreteYieldingFunction
     {
-        get { return ConcreteClassName + ".Get()"; }
+        get { return ConcreteClassName + ".Get(depth + 1)"; }
     }
 
     public bool IsViewModel

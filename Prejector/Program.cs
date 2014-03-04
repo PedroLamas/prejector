@@ -204,7 +204,7 @@ namespace PreJector
             using (var sr = new StreamReader(injectionSpec))
             {
                 var xml = new XmlSerializer(typeof(InjectionSpecification));
-                _injectionSpecification = (InjectionSpecification) xml.Deserialize(sr);
+                _injectionSpecification = (InjectionSpecification)xml.Deserialize(sr);
             }
 
             var stringBuilder = new StringBuilder();
@@ -539,7 +539,7 @@ namespace PreJector
                     spec2.ReturnType = spec2.PrivateFieldType;
 
                     rw.WriteLine(
-                        "{0} static {1} Get() {{ if({2} != null) {{ return {2}; }} var x = {3}.Get(); {2} = x; return x; }}",
+                        "{0} static {1} Get(int depth = 0) {{ if({2} != null) {{ return {2}; }} var x = {3}.Get(depth + 1); {2} = x; return x; }}",
                         _renderAccessModifier,
                         spec2.ReturnType,
                         spec2.PrivateFieldName,
@@ -624,7 +624,7 @@ namespace PreJector
                                                  InjectionSpecificationInjection injection,
                                                  EmittedKernelSpec spec)
         {
-            rw.WriteLine("{0} static {1} Get() {{", _renderAccessModifier, spec.ReturnType);
+            rw.WriteLine("{0} static {1} Get(int depth = 0) {{", _renderAccessModifier, spec.ReturnType);
             if (injection.Singleton)
             {
                 rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
@@ -651,7 +651,7 @@ namespace PreJector
                                             ? new CSharpFile(concreteToBuild)
                                             : FileScan(concreteToBuild, true);
 
-            rw.WriteLine("{0} static {1} Get() {{", _renderAccessModifier, spec.ReturnType);
+            rw.WriteLine("{0} static {1} Get(int depth = 0) {{", _renderAccessModifier, spec.ReturnType);
 
             if (injection.Singleton)
             {
@@ -674,8 +674,20 @@ namespace PreJector
                     rw.WriteLine("#endif");
                 }
             }
+            rw.WriteLine("{0} x;", concreteToBuild);
+            rw.WriteLine("System.Diagnostics.Stopwatch stopWatch;", concreteToBuild);
+            if (!spec.IsDebug)
+            {
+                rw.WriteLine("#if DEBUG");
+            }
+            rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}\");", injection.ConcreteClassName);
+            rw.WriteLine("stopWatch = System.Diagnostics.Stopwatch.StartNew();");
+            if (!spec.IsDebug)
+            {
+                rw.WriteLine("#endif");
+            }
 
-            rw.WriteLine("var x = new {0}(", concreteToBuild);
+            rw.WriteLine("x = new {0}(", concreteToBuild);
 
             if (injection.ConstructorArgument != null && injection.ConstructorArgument.Length > 0)
             {
@@ -707,24 +719,63 @@ namespace PreJector
             }
 
             rw.WriteLine(");");
+
+            if (!spec.IsDebug)
+            {
+                rw.WriteLine("#if DEBUG");
+            }
+            rw.WriteLine("stopWatch.Stop();");
+            rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
+            if (!spec.IsDebug)
+            {
+                rw.WriteLine("#endif");
+            }
+
             rw.WriteLine("{0} = x;", spec.PrivateFieldName);
 
             if (!injection.NoScan)
             {
-                RenderPropertyInjections(rw, fileDefinition);
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#if DEBUG");
+                }
+                rw.WriteLine("stopWatch = System.Diagnostics.Stopwatch.StartNew();");
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#endif");
+                }
+
+                var hasProperties = RenderPropertyInjections(rw, fileDefinition);
+
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#if DEBUG");
+                }
+                rw.WriteLine("stopWatch.Stop();");
+                if (hasProperties)
+                {
+                    rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypePropertiesSet: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
+                }
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#endif");
+                }
             }
 
             rw.WriteLine("return {0};", spec.PrivateFieldName);
             rw.WriteLine("}");
         }
 
-        private static void RenderPropertyInjections(StringWriter rw, CSharpFile fileDefinition)
+        private static bool RenderPropertyInjections(StringWriter rw, CSharpFile fileDefinition)
         {
+            var hasProperties = false;
+
             foreach (var propertyInjection in fileDefinition.PropertyInjections)
             {
                 string interfaceRequired = propertyInjection.Key;
                 string concreteFunction = GetConcreteYieldingFunction(interfaceRequired);
                 rw.WriteLine("x.{0} = {1};", propertyInjection.Value, concreteFunction);
+                hasProperties = true;
             }
 
             foreach (string baseType in fileDefinition.BaseTypes)
@@ -746,8 +797,10 @@ namespace PreJector
                 }
 
                 CSharpFile x = FileScan(baseType, true);
-                RenderPropertyInjections(rw, x);
+                hasProperties |= RenderPropertyInjections(rw, x);
             }
+
+            return hasProperties;
         }
 
         private static string GetConcreteYieldingFunction(string interfaceRequired)
@@ -782,7 +835,7 @@ namespace PreJector
                     }
                 }
             }
-            outer:
+        outer:
 
             if (foundInjection == null)
             {

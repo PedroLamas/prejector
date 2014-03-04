@@ -628,10 +628,16 @@ namespace PreJector
             if (injection.Singleton)
             {
                 rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
+                rw.WriteLine("lock(typeof({0})) {{", spec.ReturnType);
+                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
             }
             rw.WriteLine("{0} = new {1}().Create();", spec.PrivateFieldName, injection.Provider);
             rw.WriteLine("return {0};", spec.PrivateFieldName);
             rw.WriteLine("}");
+            if (injection.Singleton)
+            {
+                rw.WriteLine("}");
+            }
         }
 
         private static void RenderConcreteBuilderGetter(StringWriter rw,
@@ -676,6 +682,11 @@ namespace PreJector
             }
             rw.WriteLine("{0} x;", concreteToBuild);
             rw.WriteLine("System.Diagnostics.Stopwatch stopWatch;", concreteToBuild);
+            if (injection.Singleton)
+            {
+                rw.WriteLine("lock(typeof({0})) {{", spec.ReturnType);
+                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
+            }
             if (!spec.IsDebug)
             {
                 rw.WriteLine("#if DEBUG");
@@ -732,6 +743,10 @@ namespace PreJector
             }
 
             rw.WriteLine("{0} = x;", spec.PrivateFieldName);
+            if (injection.Singleton)
+            {
+                rw.WriteLine("}");
+            }
 
             if (!injection.NoScan)
             {

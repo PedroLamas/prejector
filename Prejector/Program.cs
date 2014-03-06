@@ -461,12 +461,12 @@ namespace PreJector
                         throw new Exception("Providers with no concrete and interfaces.Count != 1 not supported");
                     }
                     spec.PrivateFieldType = injection.Interface.First().Value;
-                    spec.PrivateFieldName = RenderPrivateField(rw, spec);
+                    spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
                 }
                 else
                 {
                     spec.PrivateFieldType = injection.Concrete;
-                    spec.PrivateFieldName = RenderPrivateField(rw, spec);
+                    spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
                 }
 
                 spec.ReturnType = injection.Interface != null && injection.Interface.Length == 1
@@ -474,7 +474,7 @@ namespace PreJector
                                       : injection.Concrete;
 
                 RenderProviderGetter(rw, injection, spec);
-                RenderClearAndRebind(rw, spec);
+                RenderClearAndRebind(rw, spec, injection.Singleton);
             }
             else if (!string.IsNullOrEmpty(injection.Concrete))
             {
@@ -482,9 +482,9 @@ namespace PreJector
                                             ? injection.Interface.First().Value
                                             : injection.Concrete;
                 spec.ReturnType = spec.PrivateFieldType;
-                spec.PrivateFieldName = RenderPrivateField(rw, spec);
+                spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
                 RenderConcreteBuilderGetter(rw, injection, spec);
-                RenderClearAndRebind(rw, spec);
+                RenderClearAndRebind(rw, spec, injection.Singleton);
             }
             else
             {
@@ -535,17 +535,17 @@ namespace PreJector
                                  _renderAccessModifier,
                                  spec2.KernelClassName);
 
-                    spec2.PrivateFieldName = RenderPrivateField(rw, spec2);
+                    spec2.PrivateFieldName = RenderPrivateField(rw, spec2, false);
                     spec2.ReturnType = spec2.PrivateFieldType;
 
                     rw.WriteLine(
-                        "{0} static {1} Get(int depth = 0) {{ if({2} != null) {{ return {2}; }} var x = {3}.Get(depth + 1); {2} = x; return x; }}",
+                        "{0} static {1} Get() {{ if({2} != null) {{ return {2}; }} var x = {3}.Get(); {2} = x; return x; }}",
                         _renderAccessModifier,
                         spec2.ReturnType,
                         spec2.PrivateFieldName,
                         injection.ConcreteClassName);
 
-                    RenderClearAndRebind(rw, spec2);
+                    RenderClearAndRebind(rw, spec2, false);
 
                     rw.WriteLine('}');
 
@@ -601,22 +601,44 @@ namespace PreJector
                     select file.Namespace).ToList();
         }
 
-        private static void RenderClearAndRebind(StringWriter rw, EmittedKernelSpec spec)
+        private static void RenderClearAndRebind(StringWriter rw,
+                                                 EmittedKernelSpec spec, 
+                                                 bool singleton)
         {
             // Annoyingly, I wanted to do these through reflection to ensure encapsulation, but silverlight has removed the
             // ability to assign private fields, so I'm forced to make these public...
-            rw.WriteLine("{0} static void Clear() {{ {1} = null; }}", _renderAccessModifier, spec.PrivateFieldName);
-            rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = value; }}",
-                         _renderAccessModifier,
-                         spec.PrivateFieldType,
-                         spec.PrivateFieldName);
+            if (singleton)
+            {
+                rw.WriteLine("{0} static void Clear() {{ {2} = new Lazy<{1}>(() => null); }}", _renderAccessModifier, spec.PrivateFieldType, spec.PrivateFieldName);
+                rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = new Lazy<{1}>(() => value); }}",
+                    _renderAccessModifier,
+                    spec.PrivateFieldType,
+                    spec.PrivateFieldName);
+            }
+            else
+            {
+                rw.WriteLine("{0} static void Clear() {{ {1} = null; }}", _renderAccessModifier, spec.PrivateFieldName);
+                rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = value; }}",
+                    _renderAccessModifier,
+                    spec.PrivateFieldType,
+                    spec.PrivateFieldName);
+            }
         }
 
-        private static string RenderPrivateField(StringWriter rw, EmittedKernelSpec spec)
+        private static string RenderPrivateField(StringWriter rw,
+                                                 EmittedKernelSpec spec,
+                                                 bool singleton)
         {
             int indexOf = spec.KernelClassName.IndexOf('_');
             string fieldName = spec.KernelClassName.Remove(0, indexOf);
-            rw.WriteLine("private static {0} {1};", spec.PrivateFieldType, fieldName);
+            if (singleton)
+            {
+                rw.WriteLine("private static Lazy<{0}> {1};", spec.PrivateFieldType, fieldName);
+            }
+            else
+            {
+                rw.WriteLine("private static {0} {1};", spec.PrivateFieldType, fieldName);
+            }
             return fieldName;
         }
 
@@ -624,17 +646,26 @@ namespace PreJector
                                                  InjectionSpecificationInjection injection,
                                                  EmittedKernelSpec spec)
         {
-            rw.WriteLine("{0} static {1} Get(int depth = 0) {{", _renderAccessModifier, spec.ReturnType);
             if (injection.Singleton)
             {
-                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
-                rw.WriteLine("lock(typeof({0})) {{", spec.ReturnType);
-                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
+                rw.WriteLine("static {0}() {{", injection.ConcreteClassName);
+                rw.WriteLine("{0} = new Lazy<{1}>(() => {{", spec.PrivateFieldName, spec.PrivateFieldType);
             }
-            rw.WriteLine("{0} = new {1}().Create();", spec.PrivateFieldName, injection.Provider);
-            rw.WriteLine("return {0};", spec.PrivateFieldName);
-            rw.WriteLine("}");
+            else
+            {
+                rw.WriteLine("{0} static {1} Get() {{", _renderAccessModifier, spec.ReturnType);
+            }
+
+            rw.WriteLine("var x = new {0}().Create();", injection.Provider);
+            rw.WriteLine("return x;", spec.PrivateFieldName);
+
             if (injection.Singleton)
+            {
+                rw.WriteLine("});");
+                rw.WriteLine("}");
+                rw.WriteLine("{0} static {1} Get() {{ return {2}.Value; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
+            }
+            else
             {
                 rw.WriteLine("}");
             }
@@ -657,11 +688,14 @@ namespace PreJector
                                             ? new CSharpFile(concreteToBuild)
                                             : FileScan(concreteToBuild, true);
 
-            rw.WriteLine("{0} static {1} Get(int depth = 0) {{", _renderAccessModifier, spec.ReturnType);
-
             if (injection.Singleton)
             {
-                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
+                rw.WriteLine("static {0}() {{", injection.ConcreteClassName);
+                rw.WriteLine("{0} = new Lazy<{1}>(() => {{", spec.PrivateFieldName, spec.PrivateFieldType);
+            }
+            else
+            {
+                rw.WriteLine("{0} static {1} Get() {{", _renderAccessModifier, spec.ReturnType);
             }
 
             // There is no StackTrace on Metro :-(
@@ -674,31 +708,24 @@ namespace PreJector
                 rw.WriteLine("var stack = new StackTrace().GetFrames();");
                 rw.WriteLine("var methodName = stack.First().GetMethod().DeclaringType.Name;");
                 rw.WriteLine(
-                    "if (stack.Count(y => y.GetMethod().DeclaringType.Name == methodName) > 1) { throw new Exception(\"Infinite loop detected\"); }");
+                    "if (stack.Count(y => y.GetMethod().DeclaringType.Name == methodName) > 2) { throw new Exception(\"Infinite loop detected\"); }");
                 if (!spec.IsDebug)
                 {
                     rw.WriteLine("#endif");
                 }
             }
-            rw.WriteLine("{0} x;", concreteToBuild);
-            rw.WriteLine("System.Diagnostics.Stopwatch stopWatch;", concreteToBuild);
-            if (injection.Singleton)
-            {
-                rw.WriteLine("lock(typeof({0})) {{", spec.ReturnType);
-                rw.WriteLine("if({0} != null) return {0};", spec.PrivateFieldName);
-            }
             if (!spec.IsDebug)
             {
                 rw.WriteLine("#if DEBUG");
             }
-            rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}\");", injection.ConcreteClassName);
-            rw.WriteLine("stopWatch = System.Diagnostics.Stopwatch.StartNew();");
+            rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}\");", injection.ConcreteClassName);
+            rw.WriteLine("var stopWatch = System.Diagnostics.Stopwatch.StartNew();");
             if (!spec.IsDebug)
             {
                 rw.WriteLine("#endif");
             }
 
-            rw.WriteLine("x = new {0}(", concreteToBuild);
+            rw.WriteLine("var x = new {0}(", concreteToBuild);
 
             if (injection.ConstructorArgument != null && injection.ConstructorArgument.Length > 0)
             {
@@ -736,16 +763,10 @@ namespace PreJector
                 rw.WriteLine("#if DEBUG");
             }
             rw.WriteLine("stopWatch.Stop();");
-            rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
+            rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
             if (!spec.IsDebug)
             {
                 rw.WriteLine("#endif");
-            }
-
-            rw.WriteLine("{0} = x;", spec.PrivateFieldName);
-            if (injection.Singleton)
-            {
-                rw.WriteLine("}");
             }
 
             if (!injection.NoScan)
@@ -769,7 +790,7 @@ namespace PreJector
                 rw.WriteLine("stopWatch.Stop();");
                 if (hasProperties)
                 {
-                    rw.WriteLine("Debug.WriteLine(\"|-\" + new string('-', depth * 2) + \"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypePropertiesSet: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
+                    rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypePropertiesSet: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
                 }
                 if (!spec.IsDebug)
                 {
@@ -777,8 +798,18 @@ namespace PreJector
                 }
             }
 
-            rw.WriteLine("return {0};", spec.PrivateFieldName);
-            rw.WriteLine("}");
+            rw.WriteLine("return x;");
+
+            if (injection.Singleton)
+            {
+                rw.WriteLine("});");
+                rw.WriteLine("}");
+                rw.WriteLine("{0} static {1} Get() {{ return {2}.Value; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
+            }
+            else
+            {
+                rw.WriteLine("}");
+            }
         }
 
         private static bool RenderPropertyInjections(StringWriter rw, CSharpFile fileDefinition)

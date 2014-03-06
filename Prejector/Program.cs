@@ -29,12 +29,13 @@ namespace PreJector
         private static string _outputFile;
         private static string[] _inputTokens;
 
+        private static bool _benchmarking = true;
         private static string _renderAccessModifier = "public";
         private static IList<string> _folderExcludes;
 
         /// <summary>
         ///     Example command line arguments:
-        ///     #PATH# #PATH#\XXX.Client\DependencyInjection\InjectionSpecification.xml NETFX_CORE;RENDERASINTERNAL;NOVIEWMODELLOCATOR
+        ///     #PATH# #PATH#\XXX.Client\DependencyInjection\InjectionSpecification.xml NETFX_CORE;RENDERASINTERNAL;NOVIEWMODELLOCATOR;NOBENCHMARK
         /// </summary>
         private static int Main(string[] args)
         {
@@ -166,6 +167,11 @@ namespace PreJector
             if (_inputTokens.Contains("RENDERASINTERNAL"))
             {
                 _renderAccessModifier = "internal";
+            }
+
+            if (_inputTokens.Contains("NOBENCHMARK"))
+            {
+                _benchmarking = false;
             }
 
             _applicationFolder = new DirectoryInfo(args[0]);
@@ -311,9 +317,16 @@ namespace PreJector
             rw.WriteLine("{0} static class KernelCleardown {{", _renderAccessModifier);
             rw.WriteLine("{0} static void Clear() {{", _renderAccessModifier);
 
-            foreach (string renderedKernelClassName in RenderedKernels.Keys)
+            foreach (var renderedKernel in RenderedKernels)
             {
-                bool isDebug = RenderedKernels[renderedKernelClassName].IsDebug;
+                if (!renderedKernel.Value.Singleton)
+                {
+                    continue;
+                }
+
+                var renderedKernelClassName = renderedKernel.Key;
+
+                bool isDebug = renderedKernel.Value.IsDebug;
 
                 if (isDebug)
                 {
@@ -446,7 +459,8 @@ namespace PreJector
             var spec = new EmittedKernelSpec
                            {
                                KernelClassName = outerKernelClassName,
-                               IsDebug = injection.DebugOnly
+                               IsDebug = injection.DebugOnly,
+                               Singleton = injection.Singleton
                            };
 
             rw.WriteLine("[CoverageExclude]");
@@ -454,18 +468,22 @@ namespace PreJector
 
             if (!string.IsNullOrEmpty(injection.Provider))
             {
-                if (string.IsNullOrEmpty(injection.Concrete))
+                if (injection.Interface.Length == 1)
                 {
-                    if (injection.Interface.Count() != 1)
-                    {
-                        throw new Exception("Providers with no concrete and interfaces.Count != 1 not supported");
-                    }
                     spec.PrivateFieldType = injection.Interface.First().Value;
-                    spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
                 }
                 else
                 {
+                    if (string.IsNullOrEmpty(injection.Concrete))
+                    {
+                        throw new Exception("Providers with no concrete and interfaces.Count != 1 not supported");
+                    }
+
                     spec.PrivateFieldType = injection.Concrete;
+                }
+
+                if (injection.Singleton)
+                {
                     spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
                 }
 
@@ -474,7 +492,11 @@ namespace PreJector
                                       : injection.Concrete;
 
                 RenderProviderGetter(rw, injection, spec);
-                RenderClearAndRebind(rw, spec, injection.Singleton);
+
+                if (injection.Singleton)
+                {
+                    RenderClearAndRebind(rw, spec);
+                }
             }
             else if (!string.IsNullOrEmpty(injection.Concrete))
             {
@@ -482,9 +504,18 @@ namespace PreJector
                                             ? injection.Interface.First().Value
                                             : injection.Concrete;
                 spec.ReturnType = spec.PrivateFieldType;
-                spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
+
+                if (injection.Singleton)
+                {
+                    spec.PrivateFieldName = RenderPrivateField(rw, spec, injection.Singleton);
+                }
+
                 RenderConcreteBuilderGetter(rw, injection, spec);
-                RenderClearAndRebind(rw, spec, injection.Singleton);
+
+                if (injection.Singleton)
+                {
+                    RenderClearAndRebind(rw, spec);
+                }
             }
             else
             {
@@ -527,7 +558,8 @@ namespace PreJector
                                     {
                                         KernelClassName = string.Format("Kernel_{0}", interfaceNameNoI),
                                         PrivateFieldType = interfaceName,
-                                        IsDebug = false
+                                        IsDebug = false,
+                                        Singleton = injection.Singleton
                                     };
 
                     rw.WriteLine("[CoverageExclude]");
@@ -535,17 +567,45 @@ namespace PreJector
                                  _renderAccessModifier,
                                  spec2.KernelClassName);
 
-                    spec2.PrivateFieldName = RenderPrivateField(rw, spec2, false);
                     spec2.ReturnType = spec2.PrivateFieldType;
 
-                    rw.WriteLine(
-                        "{0} static {1} Get() {{ if({2} != null) {{ return {2}; }} var x = {3}.Get(); {2} = x; return x; }}",
-                        _renderAccessModifier,
-                        spec2.ReturnType,
-                        spec2.PrivateFieldName,
-                        injection.ConcreteClassName);
+                    if (injection.Singleton)
+                    {
+                        spec2.PrivateFieldName = RenderPrivateField(rw, spec2, injection.Singleton);
 
-                    RenderClearAndRebind(rw, spec2, false);
+                        rw.WriteLine(
+                            "static {0}() {{ {1} = new Lazy<{2}>({3}.Get); }}",
+                            spec2.KernelClassName,
+                            spec2.PrivateFieldName,
+                            spec2.ReturnType,
+                            injection.ConcreteClassName);
+                        rw.WriteLine(
+                            "{0} static {1} Get() {{ return {2}.Value; }}",
+                            _renderAccessModifier,
+                            spec2.ReturnType,
+                            spec2.PrivateFieldName);
+                        rw.WriteLine(
+                            "{0} static Lazy<{1}> GetLazy() {{ return {2}; }}",
+                            _renderAccessModifier,
+                            spec2.ReturnType,
+                            spec2.PrivateFieldName);
+
+                        RenderClearAndRebind(rw, spec2);
+                    }
+                    else
+                    {
+                        rw.WriteLine(
+                            "{0} static {1} Get() {{ return {3}.Get(); }}",
+                            _renderAccessModifier,
+                            spec2.ReturnType,
+                            spec2.PrivateFieldName,
+                            injection.ConcreteClassName);
+                        rw.WriteLine(
+                            "{0} static Lazy<{1}> GetLazy() {{ return new Lazy<{1}>({2}.Get); }}",
+                            _renderAccessModifier,
+                            spec2.ReturnType,
+                            injection.ConcreteClassName);
+                    }
 
                     rw.WriteLine('}');
 
@@ -596,33 +656,19 @@ namespace PreJector
 
             return (from type in usedTypes
                     select FileScan(type, false)
-                    into file
-                    where file != null
-                    select file.Namespace).ToList();
+                        into file
+                        where file != null
+                        select file.Namespace).ToList();
         }
 
         private static void RenderClearAndRebind(StringWriter rw,
-                                                 EmittedKernelSpec spec, 
-                                                 bool singleton)
+                                                 EmittedKernelSpec spec)
         {
-            // Annoyingly, I wanted to do these through reflection to ensure encapsulation, but silverlight has removed the
-            // ability to assign private fields, so I'm forced to make these public...
-            if (singleton)
-            {
-                rw.WriteLine("{0} static void Clear() {{ {2} = new Lazy<{1}>(() => null); }}", _renderAccessModifier, spec.PrivateFieldType, spec.PrivateFieldName);
-                rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = new Lazy<{1}>(() => value); }}",
-                    _renderAccessModifier,
-                    spec.PrivateFieldType,
-                    spec.PrivateFieldName);
-            }
-            else
-            {
-                rw.WriteLine("{0} static void Clear() {{ {1} = null; }}", _renderAccessModifier, spec.PrivateFieldName);
-                rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = value; }}",
-                    _renderAccessModifier,
-                    spec.PrivateFieldType,
-                    spec.PrivateFieldName);
-            }
+            rw.WriteLine("{0} static void Clear() {{ {2} = new Lazy<{1}>(() => null); }}", _renderAccessModifier, spec.PrivateFieldType, spec.PrivateFieldName);
+            rw.WriteLine("{0} static void Rebind({1} value) {{ {2} = new Lazy<{1}>(() => value); }}",
+                _renderAccessModifier,
+                spec.PrivateFieldType,
+                spec.PrivateFieldName);
         }
 
         private static string RenderPrivateField(StringWriter rw,
@@ -657,17 +703,19 @@ namespace PreJector
             }
 
             rw.WriteLine("var x = new {0}().Create();", injection.Provider);
-            rw.WriteLine("return x;", spec.PrivateFieldName);
+            rw.WriteLine("return x;");
 
             if (injection.Singleton)
             {
                 rw.WriteLine("});");
                 rw.WriteLine("}");
                 rw.WriteLine("{0} static {1} Get() {{ return {2}.Value; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
+                rw.WriteLine("{0} static Lazy<{1}> GetLazy() {{ return {2}; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
             }
             else
             {
                 rw.WriteLine("}");
+                rw.WriteLine("{0} static Lazy<{1}> GetLazy() {{ return new Lazy<{1}>(Get); }}", _renderAccessModifier, spec.ReturnType);
             }
         }
 
@@ -707,22 +755,24 @@ namespace PreJector
                 }
                 rw.WriteLine("var stack = new StackTrace().GetFrames();");
                 rw.WriteLine("var methodName = stack.First().GetMethod().DeclaringType.Name;");
-                rw.WriteLine(
-                    "if (stack.Count(y => y.GetMethod().DeclaringType.Name == methodName) > 2) { throw new Exception(\"Infinite loop detected\"); }");
+                rw.WriteLine("if (stack.Count(y => y.GetMethod().DeclaringType.Name == methodName) > 2) { throw new Exception(\"Infinite loop detected\"); }");
                 if (!spec.IsDebug)
                 {
                     rw.WriteLine("#endif");
                 }
             }
-            if (!spec.IsDebug)
+            if (_benchmarking)
             {
-                rw.WriteLine("#if DEBUG");
-            }
-            rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}\");", injection.ConcreteClassName);
-            rw.WriteLine("var stopWatch = System.Diagnostics.Stopwatch.StartNew();");
-            if (!spec.IsDebug)
-            {
-                rw.WriteLine("#endif");
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#if DEBUG");
+                }
+                rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}\");", injection.ConcreteClassName);
+                rw.WriteLine("var stopWatch = System.Diagnostics.Stopwatch.StartNew();");
+                if (!spec.IsDebug)
+                {
+                    rw.WriteLine("#endif");
+                }
             }
 
             rw.WriteLine("var x = new {0}(", concreteToBuild);
@@ -758,43 +808,52 @@ namespace PreJector
 
             rw.WriteLine(");");
 
-            if (!spec.IsDebug)
+            if (_benchmarking)
             {
-                rw.WriteLine("#if DEBUG");
-            }
-            rw.WriteLine("stopWatch.Stop();");
-            rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
-            if (!spec.IsDebug)
-            {
-                rw.WriteLine("#endif");
-            }
-
-            if (!injection.NoScan)
-            {
-                if (!spec.IsDebug)
-                {
-                    rw.WriteLine("#if DEBUG");
-                }
-                rw.WriteLine("stopWatch = System.Diagnostics.Stopwatch.StartNew();");
-                if (!spec.IsDebug)
-                {
-                    rw.WriteLine("#endif");
-                }
-
-                var hasProperties = RenderPropertyInjections(rw, fileDefinition);
-
                 if (!spec.IsDebug)
                 {
                     rw.WriteLine("#if DEBUG");
                 }
                 rw.WriteLine("stopWatch.Stop();");
-                if (hasProperties)
-                {
-                    rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypePropertiesSet: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
-                }
+                rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypeConstruct: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
                 if (!spec.IsDebug)
                 {
                     rw.WriteLine("#endif");
+                }
+            }
+
+            if (!injection.NoScan)
+            {
+                if (_benchmarking)
+                {
+                    if (!spec.IsDebug)
+                    {
+                        rw.WriteLine("#if DEBUG");
+                    }
+                    rw.WriteLine("stopWatch = System.Diagnostics.Stopwatch.StartNew();");
+                    if (!spec.IsDebug)
+                    {
+                        rw.WriteLine("#endif");
+                    }
+                }
+
+                var hasProperties = RenderPropertyInjections(rw, fileDefinition);
+
+                if (_benchmarking)
+                {
+                    if (!spec.IsDebug)
+                    {
+                        rw.WriteLine("#if DEBUG");
+                    }
+                    rw.WriteLine("stopWatch.Stop();");
+                    if (hasProperties)
+                    {
+                        rw.WriteLine("Debug.WriteLine(\"Thread(\" + System.Threading.Thread.CurrentThread.ManagedThreadId + \") : Kernel TypePropertiesSet: {0}, MillisecondsElapsed: \" + stopWatch.ElapsedMilliseconds);", injection.ConcreteClassName);
+                    }
+                    if (!spec.IsDebug)
+                    {
+                        rw.WriteLine("#endif");
+                    }
                 }
             }
 
@@ -805,10 +864,12 @@ namespace PreJector
                 rw.WriteLine("});");
                 rw.WriteLine("}");
                 rw.WriteLine("{0} static {1} Get() {{ return {2}.Value; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
+                rw.WriteLine("{0} static Lazy<{1}> GetLazy() {{ return {2}; }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
             }
             else
             {
                 rw.WriteLine("}");
+                rw.WriteLine("{0} static Lazy<{1}> GetLazy() {{ return new Lazy<{1}>(Get); }}", _renderAccessModifier, spec.ReturnType, spec.PrivateFieldName);
             }
         }
 
@@ -851,37 +912,41 @@ namespace PreJector
 
         private static string GetConcreteYieldingFunction(string interfaceRequired)
         {
+            var isLazy = interfaceRequired.StartsWith("Lazy<");
+
+            if (isLazy)
+            {
+                interfaceRequired = interfaceRequired.Substring(5, interfaceRequired.Length - 6);
+            }
+
             // Detect if self-bound
-            IEnumerable<InjectionSpecificationInjection> selfBound =
-                _injectionList.Where(injection => injection.Concrete == interfaceRequired);
-            if (selfBound.Count() > 2)
+            var selfBound = _injectionList.Where(injection => injection.Concrete == interfaceRequired).ToArray();
+
+            if (selfBound.Length >= 2)
             {
                 throw new Exception("Ambiguous reference");
-            }
-            else if (selfBound.Count() == 1)
-            {
-                return selfBound.First().ConcreteYieldingFunction;
             }
 
             InjectionSpecificationInjection foundInjection = null;
 
-            foreach (InjectionSpecificationInjection injection in _injectionList)
+            if (selfBound.Length == 1)
+            {
+                foundInjection = selfBound.First(); //.ConcreteYieldingFunction;
+            }
+
+            foreach (var injection in _injectionList)
             {
                 if (injection.Interface == null)
                 {
                     continue;
                 }
 
-                foreach (InjectionSpecificationInjectionInterface @interface in injection.Interface)
+                if (injection.Interface.Any(x => x.Value == interfaceRequired))
                 {
-                    if (@interface.Value == interfaceRequired)
-                    {
-                        foundInjection = injection;
-                        goto outer;
-                    }
+                    foundInjection = injection;
+                    break;
                 }
             }
-        outer:
 
             if (foundInjection == null)
             {
@@ -891,13 +956,13 @@ namespace PreJector
                 throw new InvalidOperationException(message);
             }
 
-            if (foundInjection.Interface.Length > 1)
+            if (foundInjection.Interface != null && foundInjection.Interface.Length > 1)
             {
                 // return the specific interface rather than the underlying concrete
-                return foundInjection.InterfaceYieldingFunction(interfaceRequired);
+                return foundInjection.InterfaceYieldingFunction(interfaceRequired, isLazy);
             }
 
-            return foundInjection.ConcreteYieldingFunction;
+            return foundInjection.ConcreteYieldingFunction(isLazy);
         }
     }
 }

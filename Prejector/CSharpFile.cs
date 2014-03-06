@@ -131,7 +131,7 @@ namespace PreJector
         {
             const string TagName = "interface";
             string regexPattern = "(public|internal)\\s?" + _className + "\\s?\\((?:\\s*(?<" + TagName +
-                                  ">\\w+)\\s*\\w+\\s*,?\\s?)*\\)";
+                                  ">[a-zA-Z0-9<>]+)\\s*\\w+\\s*,?\\s?)*\\)";
 
             var regex = new Regex(regexPattern, RegexOptions.Singleline | RegexOptions.Compiled);
 

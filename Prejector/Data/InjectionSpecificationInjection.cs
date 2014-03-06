@@ -46,21 +46,31 @@ public partial class InjectionSpecificationInjection
         }
     }
 
-    public string InterfaceYieldingFunction(string interfaceRequired)
+    public string InterfaceYieldingFunction(string interfaceRequired, bool isLazy)
     {
-        var @interface = Interface.Where(x => x.Value == interfaceRequired).SingleOrDefault();
+        var @interface = Interface.SingleOrDefault(x => x.Value == interfaceRequired);
 
         if (@interface == null)
         {
             throw new Exception("Why does it not exist?");
         }
 
+        if (isLazy)
+        {
+            return "Kernel_" + @interface.InterfaceNameNoI + ".GetLazy()";
+        }
+
         return "Kernel_" + @interface.InterfaceNameNoI + ".Get()";
     }
 
-    public string ConcreteYieldingFunction
+    public string ConcreteYieldingFunction(bool isLazy)
     {
-        get { return ConcreteClassName + ".Get()"; }
+        if (isLazy)
+        {
+            return ConcreteClassName + ".GetLazy()";
+        }
+
+        return ConcreteClassName + ".Get()";
     }
 
     public bool IsViewModel
